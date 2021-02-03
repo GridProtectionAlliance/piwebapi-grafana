@@ -37,6 +37,7 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
     this.target.summary.basis = this.target.summary.basis
     this.target.summary.nodata = this.target.summary.nodata || 'Null'
     this.target.summary.interval = this.target.summary.interval || ''
+    this.target.isPiPoint = this.target.isPiPoint || false
 
     this.calculationBasisSegment = this.uiSegmentSrv.newSegment(this.target.summary.basis)
     this.calculationBasis = [
@@ -71,9 +72,9 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
     }
     this.target.recordedValues.enable = this.target.recordedValues.enable || false
     
-    if (this.segments.length === 0) {
-      this.segments.push(this.uiSegmentSrv.newSelectMetric())
-    }
+    // if (this.segments.length === 0) {
+    //   this.segments.push(this.uiSegmentSrv.newSelectMetric())
+    // }
 
     this.textEditorChanged()
   }
@@ -131,9 +132,11 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
     var segments = []
     var attributes = []
 
-    _.each(splitElements, function (item) {
-      segments.push(ctrl.uiSegmentSrv.newSegment({ value: item, expandable: true }))
-    })
+    if (splitElements.length > 1 || (splitElements.length === 1 && splitElements[0] !== '')){
+      _.each(splitElements, function (item) {
+        segments.push(ctrl.uiSegmentSrv.newSegment({ value: item, expandable: true }))
+      })
+    }
 
     _.each(splitAttributes, function (item) {
       attributes.push(ctrl.uiSegmentSrv.newSegment({ value: item, expandable: true }))
@@ -259,7 +262,7 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
       type: 'attributes'
     }
 
-    return this.datasource.metricFindQuery(angular.toJson(query))
+    return this.datasource.metricFindQuery(angular.toJson(query), this.target.isPiPoint)
     .then(attributes => {
       var validAttributes = {}
 
@@ -272,8 +275,10 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
         return validAttributes[changedValue] !== undefined
       })
 
-      ctrl.availableAttributes = validAttributes
-      ctrl.attributes = filteredAttributes
+      if (!ctrl.target.isPiPoint) {
+        ctrl.availableAttributes = validAttributes
+        ctrl.attributes = filteredAttributes
+      }
     })
     .catch(err => {
       ctrl.error = err.message || 'Failed to issue metric query'
@@ -295,23 +300,27 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
     var ctrl = this
     var query = { path: ctrl.getSegmentPathUpTo(fromIndex + 1) }
     
-    if (ctrl.segments.length === 0) {
-      ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select AF Database"))
+    if (ctrl.segments.length === 0 && ctrl.target.isPiPoint === false) {
+      ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select AF"))
+    } else if (ctrl.segments.length === 0 && ctrl.target.isPiPoint === true) {
+      ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select Dataserver"))
     }
 
-    return ctrl.datasource.metricFindQuery(angular.toJson(query)).then(children => {
+    return ctrl.datasource.metricFindQuery(angular.toJson(query), this.target.isPiPoint).then(children => {
       if (children.length === 0) {
         if (query.path !== '') {
           ctrl.segments = ctrl.segments.splice(0, fromIndex + 1)
           if (ctrl.segments[ctrl.segments.length - 1].expandable) {
-            ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select AF Database"))
+            ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select AF"))
           }
         }
       } else /* if (this.isElementSegmentExpandable(segments[0])) */ {
         if (ctrl.segments.length === fromIndex) {
           ctrl.segments = ctrl.segments.splice(0, fromIndex)
           if (ctrl.segments[ctrl.segments.length - 1].expandable) {
-            ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select AF Element"))
+            if (!ctrl.target.isPiPoint) {
+              ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select AF Element"))
+            } 
           }
         } else {
           return ctrl.checkOtherSegments(fromIndex + 1)
@@ -320,7 +329,9 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
     }).catch(err => {
       ctrl.segments = ctrl.segments.splice(0, fromIndex)
       if (ctrl.segments[ctrl.segments.length - 1].expandable) {
-        ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select AF Element"))
+        if (!ctrl.target.isPiPoint) {
+          ctrl.segments.push(ctrl.uiSegmentSrv.getSegmentForValue(null, "Select AF Element"))
+        } 
       }
       ctrl.error = err.message || 'Failed to issue metric query'
     })
@@ -354,7 +365,7 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
     this.panelCtrl.refresh()
   }
 
- calcNoDataValueChanged (segment, index) {
+  calcNoDataValueChanged (segment, index) {
     this.target.summary.nodata = this.noDataReplacementSegment.value
     this.targetChanged()
     this.panelCtrl.refresh()
@@ -463,7 +474,7 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
     var ctrl = this
     var query = { path: this.getSegmentPathUpTo(index) }
 
-    return this.datasource.metricFindQuery(angular.toJson(query))
+    return this.datasource.metricFindQuery(angular.toJson(query), this.target.isPiPoint)
     .then(items => {
       var altSegments = _.map(items, item => {
         return ctrl.uiSegmentSrv.newSegment({value: item.text, expandable: item.expandable})
@@ -512,6 +523,18 @@ export class PiWebApiDatasourceQueryCtrl extends QueryCtrl {
     ctrl.checkAttributeSegments()
     ctrl.targetChanged()
   }
+
+    /**
+   * Toggle between searching by PI Point and searching via the AF.
+   * 
+   * 
+   * @memberOf PiWebApiDatasourceQueryCtrl
+   */
+  togglePiPointSearch () {
+    this.textEditorChanged()
+    this.panelCtrl.refresh()
+  }
+
 }
 
 PiWebApiDatasourceQueryCtrl.templateUrl = 'partials/query.editor.html'
